@@ -167,7 +167,11 @@ test("packages depend on service, reset cleanly, and announce availability", asy
 test("payload normalization and operational response stay separate", async () => {
   const data = onboardingSchema.parse({ companyName: "  Northstar Studio  ", companyWebsite: " https://northstar.example.com ", industry: "Other", companySize: "", firstName: " Avery ", lastName: " Reyes ", email: " avery@northstar.example.com ", phone: "  ", service: "SEO", package: "Authority", startDate: "2099-12-01", goals: " Increase qualified leads. ", notes: "  " });
   const payload = buildOnboardingPayload(data);
-  expect(payload).toEqual({ company: { name: "Northstar Studio", website: "https://northstar.example.com", industry: "Other", size: "" }, contact: { firstName: "Avery", lastName: "Reyes", email: "avery@northstar.example.com", phone: "" }, project: { service: "SEO", package: "Authority", startDate: "2099-12-01", goals: "Increase qualified leads.", notes: "" } });
+  expect(payload).toEqual({ submission: { externalId: expect.stringMatching(/^onb_[0-9a-f-]{36}$/), submittedAt: expect.any(String) }, company: { name: "Northstar Studio", website: "https://northstar.example.com", industry: "Other", size: "" }, contact: { firstName: "Avery", lastName: "Reyes", email: "avery@northstar.example.com", phone: "" }, project: { service: "SEO", package: "Authority", startDate: "2099-12-01", goals: "Increase qualified leads.", notes: "" } });
+  expect(Object.keys(payload)).toEqual(["submission", "company", "contact", "project"]);
+  expect(new Date(payload.submission.submittedAt).toISOString()).toBe(payload.submission.submittedAt);
+  expect(buildOnboardingPayload(data, payload.submission)).toEqual(payload);
+  expect(buildOnboardingPayload(data).submission.externalId).not.toBe(payload.submission.externalId);
   const invalid = onboardingSchema.safeParse({ ...data, package: "Custom Build" });
   expect(invalid.success).toBe(false);
   if (!invalid.success) expect(invalid.error.issues.some(issue => issue.path[0] === "package")).toBe(true);
@@ -191,6 +195,8 @@ test("payload normalization and operational response stay separate", async () =>
 });
 
 test("API failure preserves entered details and allows retry", async ({ page }) => {
+  const sent: unknown[] = [];
+  page.on("request", request => { if (request.url().endsWith("/api/onboarding")) sent.push(request.postDataJSON()); });
   await page.route("**/api/onboarding", route => route.fulfill({ status: 502, json: { success: false } }));
   await page.goto("/");
   await fillRequired(page);
@@ -204,4 +210,29 @@ test("API failure preserves entered details and allows retry", async ({ page }) 
   await page.route("**/api/onboarding", route => route.fulfill({ json: { success: true } }));
   await page.getByRole("button", { name: "Submit onboarding" }).click();
   await expect(page.getByRole("heading", { name: "Onboarding received" })).toBeVisible();
+  expect(sent).toHaveLength(2);
+  expect(sent[1]).toEqual(sent[0]);
+});
+
+test("network retry retains metadata; editing details creates a new submission", async ({ page }) => {
+  const sent: { submission: { externalId: string; submittedAt: string } }[] = [];
+  await page.route("**/api/onboarding", route => {
+    sent.push(route.request().postDataJSON());
+    return route.abort("failed");
+  });
+  await page.goto("/");
+  await fillRequired(page);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.getByRole("button", { name: "Submit onboarding" }).click();
+    await expect(page.locator("form").getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Submit onboarding" })).toBeEnabled();
+  }
+  expect(sent).toHaveLength(2);
+  expect(sent[1]).toEqual(sent[0]);
+  await page.getByLabel("Company name").fill("Updated Northstar Studio");
+  await page.getByRole("button", { name: "Submit onboarding" }).click();
+  await expect(page.locator("form").getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit onboarding" })).toBeEnabled();
+  expect(sent).toHaveLength(3);
+  expect(sent[2].submission.externalId).not.toBe(sent[0].submission.externalId);
 });

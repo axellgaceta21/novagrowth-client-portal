@@ -7,7 +7,7 @@ import { ArrowRight, ChevronDown, LoaderCircle, ShieldCheck } from "lucide-react
 import { companySizes, industries, localToday, onboardingSchema, packagesForService, services, type OnboardingData } from "@/lib/schema";
 import { buildOnboardingPayload } from "@/lib/onboarding-payload";
 import { submitOnboarding } from "@/lib/submit-onboarding";
-import type { Confirmation } from "@/lib/types";
+import type { Confirmation, OnboardingPayload } from "@/lib/types";
 import { FormSection } from "./form-section";
 import { FormField } from "./form-field";
 import { SuccessState } from "./success-state";
@@ -17,6 +17,7 @@ export function OnboardingForm() {
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [submitError, setSubmitError] = useState("");
   const submitting = useRef(false);
+  const pendingSubmission = useRef<{ dataKey: string; payload: OnboardingPayload } | null>(null);
   const { register, handleSubmit, watch, resetField, formState: { errors, isSubmitting } } = useForm<OnboardingData>({
     resolver: zodResolver(onboardingSchema), mode: "onTouched", reValidateMode: "onChange",
     defaultValues: { companyName: "", companyWebsite: "", industry: "", companySize: "", firstName: "", lastName: "", email: "", phone: "", service: "", package: "", startDate: "", goals: "", notes: "" },
@@ -39,7 +40,16 @@ export function OnboardingForm() {
     if (submitting.current) return;
     submitting.current = true;
     setSubmitError("");
-    try { const result = await submitOnboarding(buildOnboardingPayload(data)); setConfirmation({ ...result, data }); }
+    try {
+      // Keep the exact payload and creation metadata for retries of unchanged
+      // validated data. Edited details start a new logical submission.
+      const dataKey = JSON.stringify(data);
+      if (!pendingSubmission.current || pendingSubmission.current.dataKey !== dataKey) {
+        pendingSubmission.current = { dataKey, payload: buildOnboardingPayload(data) };
+      }
+      const result = await submitOnboarding(pendingSubmission.current.payload);
+      setConfirmation({ ...result, data });
+    }
     catch { setSubmitError("We couldn’t complete your submission. Your details are still here. Please try again."); }
     finally { submitting.current = false; }
   }

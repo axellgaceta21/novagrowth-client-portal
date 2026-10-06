@@ -3,6 +3,7 @@ import { POST, GET, PUT, PATCH, DELETE, OPTIONS, HEAD } from "../app/api/onboard
 import type { OnboardingPayload } from "../lib/types";
 
 const payload: OnboardingPayload = {
+  submission: { externalId: "onb_550e8400-e29b-41d4-a716-446655440000", submittedAt: "2026-10-06T02:00:00.000Z" },
   company: { name: "Northstar Studio", website: "https://northstar.example.com", industry: "Other", size: "" },
   contact: { firstName: "Avery", lastName: "Reyes", email: "avery@northstar.example.com", phone: "" },
   project: { service: "SEO", package: "Authority", startDate: "2099-12-01", goals: "Increase qualified leads.", notes: "" },
@@ -15,6 +16,17 @@ test.afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalUrl === undefined) delete process.env.MAKE_ONBOARDING_WEBHOOK_URL;
   else process.env.MAKE_ONBOARDING_WEBHOOK_URL = originalUrl;
+});
+
+test("submission metadata is required and invalid metadata is never forwarded", async () => {
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return new Response("Accepted"); };
+  const { submission, ...withoutSubmission } = payload;
+  const invalidBodies = [withoutSubmission, { ...payload, submission: {} },
+    ...["NG-1047", "onb_invalid", "550e8400-e29b-41d4-a716-446655440000"].map(externalId => ({ ...payload, submission: { ...submission, externalId } })),
+    ...["", "not a date", "2026-02-30T00:00:00Z", "2026-10-06"].map(submittedAt => ({ ...payload, submission: { ...submission, submittedAt } }))];
+  for (const body of invalidBodies) expect((await POST(request(body))).status).toBe(422);
+  expect(calls).toBe(0);
 });
 
 test("only POST is accepted; malformed and invalid payloads are not forwarded", async () => {
