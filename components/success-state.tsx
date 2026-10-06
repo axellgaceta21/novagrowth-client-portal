@@ -15,7 +15,7 @@ export function SuccessState({ confirmation }: { confirmation: Confirmation }) {
     <p className="success-thanks">Thanks, {data.firstName}. Your onboarding details for <strong>{data.companyName}</strong> have been received.</p>
     <p className="success-description">Our team will begin preparing your workspace and project resources.<br className="hidden md:block" /> We’ll contact you if we need any additional information.</p>
     <dl className="confirmation-summary"><div><dt>Client</dt><dd>{data.companyName}</dd></div><div><dt>Client ID</dt><dd className="client-id">{clientId}</dd></div><div><dt>Service</dt><dd>{data.service}</dd></div><div><dt>Package</dt><dd>{data.package}</dd></div><div><dt>Status</dt><dd><span className="status-dot" />{status}</dd></div></dl>
-    <div className="next-steps"><h3>What happens next</h3><ol>{["We’ll review your onboarding information.", "Your project workspace and resources will be prepared.", "Your team will contact you with the next steps."].map((item, index) => <li key={item}><span>{String(index + 1).padStart(2, "0")}</span>{item}</li>)}</ol></div>
+    <div className="next-steps"><h3>What happens next</h3><ol>{["We’ll review your onboarding information.", "Your project workspace and resources will be prepared.", "Our team will contact you with the next steps."].map((item, index) => <li key={item}><span>{String(index + 1).padStart(2, "0")}</span>{item}</li>)}</ol></div>
     <p className="confirmation-detail"><CheckCheck size={16} aria-hidden="true" /> Submitted successfully · {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(submittedAt))}</p>
   </section>;
 }

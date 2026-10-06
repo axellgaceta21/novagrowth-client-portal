@@ -62,7 +62,7 @@ select option { color: var(--ink); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .skip-link { position: fixed; left: 16px; top: 12px; z-index: 20; padding: 10px 16px; color: white; background: #243c35; opacity: 0; pointer-events: none; }
 .skip-link:focus { opacity: 1; pointer-events: auto; }
-.success-state { border-top: 1px solid var(--line); padding-top: 44px; min-height: 640px; }
+.success-state { border-top: 1px solid var(--line); margin-top: 32px; padding-top: 44px; min-height: 640px; }
 .success-icon { width: 48px; height: 48px; background: #e8efe9; color: var(--accent); border: 1px solid #d5e1d6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 25px; }
 .success-state h2 { margin: 10px 0 20px; font-weight: 550; letter-spacing: -.7px; font-size: 29px; }
 .success-thanks { font-size: 16px; line-height: 1.75; max-width: 750px; overflow-wrap: anywhere; }
@@ -103,7 +103,7 @@ select option { color: var(--ink); }
   .submit-button { width: 100%; min-height: 48px; }
   .portal-footer { margin-top: 32px; flex-direction: column; gap: 6px; }
   .confirmation-summary { grid-template-columns: 1fr 1fr; gap: 22px; }
-  .success-state { min-height: 0; padding-top: 30px; }
+  .success-state { min-height: 0; margin-top: 24px; padding-top: 30px; }
   .success-thanks { font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }

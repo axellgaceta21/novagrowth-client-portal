@@ -11,6 +11,7 @@ import type { Confirmation } from "@/lib/types";
 import { FormSection } from "./form-section";
 import { FormField } from "./form-field";
 import { SuccessState } from "./success-state";
+import { OnboardingIntroduction } from "./onboarding-introduction";
 
 export function OnboardingForm() {
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -43,7 +44,7 @@ export function OnboardingForm() {
     finally { submitting.current = false; }
   }
   if (confirmation) return <SuccessState confirmation={confirmation} />;
-  return <form id="onboarding" noValidate onSubmit={event => {
+  return <><OnboardingIntroduction /><form id="onboarding" noValidate onSubmit={event => {
     if (submitting.current) { event.preventDefault(); return; }
     void handleSubmit(onSubmit)(event);
   }} aria-busy={isSubmitting}>
@@ -77,5 +78,5 @@ export function OnboardingForm() {
     <div className="submission-area"><div className="privacy-note"><ShieldCheck size={21} strokeWidth={1.6} aria-hidden="true" /><div><h3>Your information stays private.</h3><p>Your onboarding details are used only to prepare<br className="hidden lg:block" /> and manage your NovaGrowth project.</p></div></div><button className="submit-button" type="submit" disabled={isSubmitting}>{isSubmitting ? <><LoaderCircle className="spinner" size={17} aria-hidden="true" /> Submitting…</> : <>Submit onboarding <ArrowRight size={17} aria-hidden="true" /></>}</button></div>
     <div role="status" className="sr-only">{isSubmitting ? "Submitting your onboarding details." : ""}</div>
     {submitError && <p role="alert" className="submission-error">{submitError}</p>}
-  </form>;
+  </form></>;
 }

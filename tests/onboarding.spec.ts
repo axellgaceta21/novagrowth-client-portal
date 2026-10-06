@@ -30,6 +30,7 @@ test("all required fields report inline errors and focus the first input", async
 test("rejects invalid email, URLs, and past dates; preserves entered data", async ({ page }) => {
   await page.goto("/");
   await fillRequired(page);
+  await expect(page.locator(".introduction")).toBeVisible();
   await page.getByLabel("Company website").fill("not-a-url");
   await page.getByLabel("Work email").fill("avery@invalid");
   await page.getByLabel("Preferred start date").fill("2020-01-01");
@@ -51,6 +52,7 @@ test("local submission disables inputs and displays actual values and a generate
   await fillRequired(page);
   await page.getByRole("button", { name: "Submit onboarding" }).click();
   await expect(page.getByRole("button", { name: "Submitting" })).toBeDisabled();
+  await expect(page.locator(".introduction")).toBeVisible();
   await page.locator("form").evaluate(form => {
     form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   });
@@ -63,6 +65,10 @@ test("local submission disables inputs and displays actual values and a generate
   await expect(page.locator("dd").filter({ hasText: "Business Website" })).toBeVisible();
   await expect(page.locator("dd").filter({ hasText: "Onboarding" })).toBeVisible();
   await expect(page.locator("form")).toHaveCount(0);
+  await expect(page.locator(".introduction")).toHaveCount(0);
+  await expect(page.getByText("Estimated completion time:", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("Required fields", { exact: false })).toHaveCount(0);
+  await expect(page.locator(".next-steps li").nth(2)).toContainText("Our team will contact you with the next steps.");
   await expect(page.getByText(/Submitted successfully ·/)).toBeVisible();
   await expect(page.locator("main")).not.toContainText(/\b(demo|preview|mock|portfolio project)\b/i);
   expect(errors).toEqual([]);
@@ -111,6 +117,12 @@ for (const width of [375, 768, 1024, 1440]) {
     await fillRequired(page);
     await page.getByRole("button", { name: "Submit onboarding" }).click();
     await expect(page.getByRole("heading", { name: "Onboarding received" })).toBeVisible();
+    await expect(page.locator(".introduction")).toHaveCount(0);
+    await expect(page.locator("header")).toBeVisible();
+    const header = await page.locator("header").boundingBox();
+    const icon = await page.locator(".success-icon").boundingBox();
+    expect(icon!.y - (header!.y + header!.height)).toBeGreaterThan(40);
+    expect(icon!.y - (header!.y + header!.height)).toBeLessThan(100);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/success-${width}.png`, fullPage: true });
   });
