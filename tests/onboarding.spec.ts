@@ -3,6 +3,15 @@ import { onboardingSchema, servicePackages } from "../lib/schema";
 import { buildOnboardingPayload } from "../lib/onboarding-payload";
 import { submitOnboarding } from "../lib/submit-onboarding";
 
+// UI regression tests never trigger a real automation. Delay only the test
+// response so loading/duplicate-submission behavior remains observable.
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/onboarding", async route => {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await route.fulfill({ json: { success: true } });
+  });
+});
+
 async function fillRequired(page: Page) {
   await page.getByLabel("Company name").fill("Northstar Studio");
   await page.getByLabel("Company website").fill("https://northstar.example.com");
@@ -42,12 +51,14 @@ test("rejects invalid email, URLs, and past dates; preserves entered data", asyn
   await expect(page.getByLabel("Company name")).toHaveValue("Northstar Studio");
 });
 
-test("local submission disables inputs and displays actual values and a generated client ID", async ({ page, baseURL }) => {
+test("API acceptance disables repeat submission and displays actual values and a generated client ID", async ({ page, baseURL }) => {
   const errors: string[] = [];
   const externalRequests: string[] = [];
+  const submissions: unknown[] = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("request", request => { if (new URL(request.url()).origin !== new URL(baseURL!).origin) externalRequests.push(request.url()); });
+  page.on("request", request => { if (request.url().endsWith("/api/onboarding")) submissions.push(request.postDataJSON()); });
   await page.goto("/");
   await fillRequired(page);
   await page.getByRole("button", { name: "Submit onboarding" }).click();
@@ -73,6 +84,8 @@ test("local submission disables inputs and displays actual values and a generate
   await expect(page.locator("main")).not.toContainText(/\b(demo|preview|mock|portfolio project)\b/i);
   expect(errors).toEqual([]);
   expect(externalRequests).toEqual([]);
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0]).toMatchObject({ company: { name: "Northstar Studio" }, project: { service: "Web Development", package: "Business Website" } });
 });
 
 for (const width of [375, 768, 1024, 1440]) {
@@ -158,9 +171,37 @@ test("payload normalization and operational response stay separate", async () =>
   const invalid = onboardingSchema.safeParse({ ...data, package: "Custom Build" });
   expect(invalid.success).toBe(false);
   if (!invalid.success) expect(invalid.error.issues.some(issue => issue.path[0] === "package")).toBe(true);
-  const before = performance.now();
-  const result = await submitOnboarding(payload);
-  expect(performance.now() - before).toBeGreaterThanOrEqual(800);
-  expect(result).toMatchObject({ success: true, status: "Onboarding", clientId: expect.stringMatching(/^NG-\d{4}$/) });
-  expect(Number.isNaN(Date.parse(result.submittedAt))).toBe(false);
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url, init) => {
+      expect(url).toBe("/api/onboarding");
+      expect(init?.method).toBe("POST");
+      expect(init?.headers).toEqual({ "Content-Type": "application/json" });
+      expect(JSON.parse(init?.body as string)).toEqual(payload);
+      return Response.json({ success: true });
+    };
+    const result = await submitOnboarding(payload);
+    expect(result).toMatchObject({ success: true, status: "Onboarding", clientId: expect.stringMatching(/^NG-\d{4}$/) });
+    expect(Number.isNaN(Date.parse(result.submittedAt))).toBe(false);
+    for (const response of [Response.json({ success: false }), Response.json({ success: false }, { status: 502 }), new Response("not JSON")]) {
+      globalThis.fetch = async () => response;
+      await expect(submitOnboarding(payload)).rejects.toThrow();
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("API failure preserves entered details and allows retry", async ({ page }) => {
+  await page.route("**/api/onboarding", route => route.fulfill({ status: 502, json: { success: false } }));
+  await page.goto("/");
+  await fillRequired(page);
+  await page.getByRole("button", { name: "Submit onboarding" }).click();
+  await expect(page.locator("form").getByRole("alert")).toContainText("Your details are still here.");
+  await expect(page.getByLabel("Company name")).toHaveValue("Northstar Studio");
+  await expect(page.locator(".introduction")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit onboarding" })).toBeEnabled();
+  await expect(page.getByRole("heading", { name: "Onboarding received" })).toHaveCount(0);
+  await page.unroute("**/api/onboarding");
+  await page.route("**/api/onboarding", route => route.fulfill({ json: { success: true } }));
+  await page.getByRole("button", { name: "Submit onboarding" }).click();
+  await expect(page.getByRole("heading", { name: "Onboarding received" })).toBeVisible();
 });
