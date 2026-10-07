@@ -1,6 +1,6 @@
 import type { OnboardingData } from "./schema";
 
-export type SubmissionMetadata = { externalId: string; submittedAt: string };
+export type SubmissionMetadata = { externalId: string; clientId: string; submittedAt: string };
 
 export type OnboardingPayload = {
   submission: SubmissionMetadata;
@@ -9,5 +9,5 @@ export type OnboardingPayload = {
   project: { service: string; package: string; startDate: string; goals: string; notes: string };
 };
 
-export type SubmissionResult = { success: true; clientId: string; status: "Onboarding"; submittedAt: string };
+export type SubmissionResult = { success: true; duplicate: boolean; clientId: string; status: "Onboarding"; message: string; driveFolderUrl: string; submittedAt: string };
 export type Confirmation = SubmissionResult & { data: OnboardingData };

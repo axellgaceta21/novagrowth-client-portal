@@ -1,6 +1,7 @@
 import type { OnboardingPayload, SubmissionResult } from "./types";
+import { onboardingResponseSchema } from "./onboarding-response-schema";
 
-// The browser calls only our same-origin API; Make configuration stays server-side.
+// The browser calls only our same-origin API; webhook configuration stays server-side.
 export async function submitOnboarding(payload: OnboardingPayload): Promise<SubmissionResult> {
   const response = await fetch("/api/onboarding", {
     method: "POST",
@@ -8,13 +9,11 @@ export async function submitOnboarding(payload: OnboardingPayload): Promise<Subm
     body: JSON.stringify(payload),
   });
   if (!response.ok) throw new Error("Onboarding submission failed.");
-  const result: unknown = await response.json();
-  if (!result || typeof result !== "object" || !("success" in result) || result.success !== true) {
+  const result = onboardingResponseSchema.safeParse(await response.json());
+  if (!result.success || !result.data.success || result.data.clientId !== payload.submission.clientId) {
     throw new Error("Onboarding submission was not accepted.");
   }
 
-  // Phase 2A: preserve temporary operational data only after Make acceptance.
-  // Replace these values with server-returned operational data in a later phase.
-  const random = crypto.getRandomValues(new Uint32Array(1))[0];
-  return { success: true, clientId: `NG-${1000 + random % 9000}`, status: "Onboarding", submittedAt: new Date().toISOString() };
+  // Confirmation uses the authoritative ID already sent in the accepted payload.
+  return { ...result.data, submittedAt: new Date().toISOString() };
 }

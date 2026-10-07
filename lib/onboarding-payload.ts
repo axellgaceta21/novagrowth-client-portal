@@ -1,8 +1,13 @@
 import type { OnboardingData } from "./schema";
 import type { OnboardingPayload, SubmissionMetadata } from "./types";
 
+export function deriveClientId(externalId: string): string {
+  return `NG-${externalId.slice(-6).toUpperCase()}`;
+}
+
 export function createSubmissionMetadata(): SubmissionMetadata {
-  return { externalId: `onb_${crypto.randomUUID()}`, submittedAt: new Date().toISOString() };
+  const externalId = `onb_${crypto.randomUUID()}`;
+  return { externalId, clientId: deriveClientId(externalId), submittedAt: new Date().toISOString() };
 }
 
 // Optional values are always strings; blank values are represented by "".

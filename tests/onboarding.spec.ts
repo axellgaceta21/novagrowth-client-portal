@@ -1,14 +1,16 @@
 import { test, expect, type Page } from "@playwright/test";
 import { onboardingSchema, servicePackages } from "../lib/schema";
-import { buildOnboardingPayload } from "../lib/onboarding-payload";
+import { buildOnboardingPayload, deriveClientId } from "../lib/onboarding-payload";
+import type { OnboardingPayload } from "../lib/types";
 import { submitOnboarding } from "../lib/submit-onboarding";
+import { onboardingResponse } from "./onboarding-response";
 
 // UI regression tests never trigger a real automation. Delay only the test
 // response so loading/duplicate-submission behavior remains observable.
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/onboarding", async route => {
     await new Promise(resolve => setTimeout(resolve, 1000));
-    await route.fulfill({ json: { success: true } });
+    await route.fulfill({ json: onboardingResponse(route.request().postDataJSON().submission.clientId) });
   });
 });
 
@@ -71,7 +73,7 @@ test("API acceptance disables repeat submission and displays actual values and a
   await expect(page.getByRole("heading", { name: "Onboarding received" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Onboarding received" })).toBeFocused();
   await expect(page.getByText("Thanks, Avery.", { exact: false })).toContainText("Northstar Studio");
-  await expect(page.locator("dd").filter({ hasText: /^NG-\d{4}$/ })).toBeVisible();
+  await expect(page.locator("dd").filter({ hasText: /^NG-[0-9A-F]{6}$/ })).toBeVisible();
   await expect(page.locator("dd").filter({ hasText: "Web Development" })).toBeVisible();
   await expect(page.locator("dd").filter({ hasText: "Business Website" })).toBeVisible();
   await expect(page.locator("dd").filter({ hasText: "Onboarding" })).toBeVisible();
@@ -85,6 +87,9 @@ test("API acceptance disables repeat submission and displays actual values and a
   expect(errors).toEqual([]);
   expect(externalRequests).toEqual([]);
   expect(submissions).toHaveLength(1);
+  const submitted = submissions[0] as OnboardingPayload;
+  expect(submitted.submission.clientId).toBe(deriveClientId(submitted.submission.externalId));
+  await expect(page.locator(".client-id")).toHaveText(submitted.submission.clientId);
   expect(submissions[0]).toMatchObject({ company: { name: "Northstar Studio" }, project: { service: "Web Development", package: "Business Website" } });
 });
 
@@ -167,7 +172,10 @@ test("packages depend on service, reset cleanly, and announce availability", asy
 test("payload normalization and operational response stay separate", async () => {
   const data = onboardingSchema.parse({ companyName: "  Northstar Studio  ", companyWebsite: " https://northstar.example.com ", industry: "Other", companySize: "", firstName: " Avery ", lastName: " Reyes ", email: " avery@northstar.example.com ", phone: "  ", service: "SEO", package: "Authority", startDate: "2099-12-01", goals: " Increase qualified leads. ", notes: "  " });
   const payload = buildOnboardingPayload(data);
-  expect(payload).toEqual({ submission: { externalId: expect.stringMatching(/^onb_[0-9a-f-]{36}$/), submittedAt: expect.any(String) }, company: { name: "Northstar Studio", website: "https://northstar.example.com", industry: "Other", size: "" }, contact: { firstName: "Avery", lastName: "Reyes", email: "avery@northstar.example.com", phone: "" }, project: { service: "SEO", package: "Authority", startDate: "2099-12-01", goals: "Increase qualified leads.", notes: "" } });
+  expect(payload).toEqual({ submission: { externalId: expect.stringMatching(/^onb_[0-9a-f-]{36}$/), clientId: expect.stringMatching(/^NG-[0-9A-F]{6}$/), submittedAt: expect.any(String) }, company: { name: "Northstar Studio", website: "https://northstar.example.com", industry: "Other", size: "" }, contact: { firstName: "Avery", lastName: "Reyes", email: "avery@northstar.example.com", phone: "" }, project: { service: "SEO", package: "Authority", startDate: "2099-12-01", goals: "Increase qualified leads.", notes: "" } });
+  expect(payload.submission.clientId).toBe(deriveClientId(payload.submission.externalId));
+  expect(deriveClientId("onb_550e8400-e29b-41d4-a716-446655440020")).toBe("NG-440020");
+  expect(deriveClientId("onb_550e8400-e29b-41d4-a716-446655a12f90")).toBe("NG-A12F90");
   expect(Object.keys(payload)).toEqual(["submission", "company", "contact", "project"]);
   expect(new Date(payload.submission.submittedAt).toISOString()).toBe(payload.submission.submittedAt);
   expect(buildOnboardingPayload(data, payload.submission)).toEqual(payload);
@@ -182,10 +190,10 @@ test("payload normalization and operational response stay separate", async () =>
       expect(init?.method).toBe("POST");
       expect(init?.headers).toEqual({ "Content-Type": "application/json" });
       expect(JSON.parse(init?.body as string)).toEqual(payload);
-      return Response.json({ success: true });
+      return Response.json(onboardingResponse(payload.submission.clientId));
     };
     const result = await submitOnboarding(payload);
-    expect(result).toMatchObject({ success: true, status: "Onboarding", clientId: expect.stringMatching(/^NG-\d{4}$/) });
+    expect(result).toMatchObject({ success: true, status: "Onboarding", clientId: payload.submission.clientId });
     expect(Number.isNaN(Date.parse(result.submittedAt))).toBe(false);
     for (const response of [Response.json({ success: false }), Response.json({ success: false }, { status: 502 }), new Response("not JSON")]) {
       globalThis.fetch = async () => response;
@@ -207,7 +215,7 @@ test("API failure preserves entered details and allows retry", async ({ page }) 
   await expect(page.getByRole("button", { name: "Submit onboarding" })).toBeEnabled();
   await expect(page.getByRole("heading", { name: "Onboarding received" })).toHaveCount(0);
   await page.unroute("**/api/onboarding");
-  await page.route("**/api/onboarding", route => route.fulfill({ json: { success: true } }));
+  await page.route("**/api/onboarding", route => route.fulfill({ json: onboardingResponse(route.request().postDataJSON().submission.clientId) }));
   await page.getByRole("button", { name: "Submit onboarding" }).click();
   await expect(page.getByRole("heading", { name: "Onboarding received" })).toBeVisible();
   expect(sent).toHaveLength(2);
@@ -215,7 +223,7 @@ test("API failure preserves entered details and allows retry", async ({ page }) 
 });
 
 test("network retry retains metadata; editing details creates a new submission", async ({ page }) => {
-  const sent: { submission: { externalId: string; submittedAt: string } }[] = [];
+  const sent: OnboardingPayload[] = [];
   await page.route("**/api/onboarding", route => {
     sent.push(route.request().postDataJSON());
     return route.abort("failed");
@@ -235,4 +243,17 @@ test("network retry retains metadata; editing details creates a new submission",
   await expect(page.getByRole("button", { name: "Submit onboarding" })).toBeEnabled();
   expect(sent).toHaveLength(3);
   expect(sent[2].submission.externalId).not.toBe(sent[0].submission.externalId);
+});
+
+test("duplicate onboarding succeeds with the same Client ID and normal confirmation", async ({ page }) => {
+  let clientId = "";
+  await page.route("**/api/onboarding", route => {
+    clientId = route.request().postDataJSON().submission.clientId;
+    return route.fulfill({ json: onboardingResponse(clientId, true) });
+  });
+  await page.goto("/");
+  await fillRequired(page);
+  await page.getByRole("button", { name: "Submit onboarding" }).click();
+  await expect(page.getByRole("heading", { name: "Onboarding received" })).toBeVisible();
+  await expect(page.locator(".client-id")).toHaveText(clientId);
 });

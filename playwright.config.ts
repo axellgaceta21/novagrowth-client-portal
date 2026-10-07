@@ -8,5 +8,5 @@ export default defineConfig({
   testDir: "./tests",
   fullyParallel: false,
   use: { baseURL, browserName: "chromium", trace: "retain-on-failure" },
-  webServer: { command: `npm run ${development ? "dev" : "start"} -- --hostname 127.0.0.1 --port ${port}`, url: baseURL, reuseExistingServer: development, timeout: 120000, env: { MAKE_ONBOARDING_WEBHOOK_URL: "" } },
+  webServer: { command: `npm run ${development ? "dev" : "start"} -- --hostname 127.0.0.1 --port ${port}`, url: baseURL, reuseExistingServer: development, timeout: 120000, env: { N8N_ONBOARDING_WEBHOOK_URL: "" } },
 });

@@ -1,4 +1,5 @@
 import { onboardingPayloadSchema } from "@/lib/onboarding-payload-schema";
+import { onboardingResponseSchema } from "@/lib/onboarding-response-schema";
 
 function json(body: object, status: number, headers?: HeadersInit) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store", ...headers } });
@@ -25,12 +26,12 @@ export async function POST(request: Request) {
   }
 
   // This environment variable is read exclusively in the server route.
-  const webhookUrl = process.env.MAKE_ONBOARDING_WEBHOOK_URL?.trim();
+  const webhookUrl = process.env.N8N_ONBOARDING_WEBHOOK_URL?.trim();
   try {
     if (!webhookUrl || !["https:", "http:"].includes(new URL(webhookUrl).protocol)) {
-      return json({ success: false, error: "Onboarding submission is unavailable." }, 503);
+      return json({ success: false, error: "Onboarding webhook is not configured correctly." }, 503);
     }
-  } catch { return json({ success: false, error: "Onboarding submission is unavailable." }, 503); }
+  } catch { return json({ success: false, error: "Onboarding webhook is not configured correctly." }, 503); }
 
   try {
     const response = await fetch(webhookUrl, {
@@ -41,12 +42,13 @@ export async function POST(request: Request) {
       redirect: "error",
       cache: "no-store",
     });
-    // Make may return plain text (e.g. "Accepted"). Only its HTTP status is
-    // needed for Phase 2A; never expose upstream bodies, URLs, or errors.
-    if (!response.ok) {
-      return json({ success: false, error: "Unable to submit onboarding details." }, 502);
+    const upstream = onboardingResponseSchema.safeParse(await response.json());
+    if (!upstream.success ||
+      (response.ok && !upstream.data.success) ||
+      (upstream.data.success && upstream.data.clientId !== parsed.data.submission.clientId)) {
+      return json({ success: false, error: "Invalid onboarding webhook response." }, 502);
     }
-    return json({ success: true }, 200);
+    return json(upstream.data, response.status);
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
     return json({ success: false, error: timedOut ? "Onboarding submission timed out." : "Unable to submit onboarding details." }, timedOut ? 504 : 502);
